@@ -99,7 +99,7 @@ require (
 	google.golang.org/api v0.214.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/mail.v2 v2.3.1
-	l7e.io/yama v0.5.1-0.20261013213441-3e3340330af6
+	l7e.io/yama v0.5.1-0.20261013213441-3086f8c51ca5
 	oras.land/oras-go/v2 v2.6.2
 )
 

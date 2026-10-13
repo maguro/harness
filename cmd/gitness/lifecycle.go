@@ -20,7 +20,7 @@ import (
 	"context"
 
 	checkcontroller "github.com/harness/gitness/app/api/controller/check"
-	controllerconnector "github.com/harness/gitness/app/api/controller/connector"
+	"github.com/harness/gitness/app/api/controller/connector"
 	"github.com/harness/gitness/app/api/controller/execution"
 	githookCtrl "github.com/harness/gitness/app/api/controller/githook"
 	gitspaceCtrl "github.com/harness/gitness/app/api/controller/gitspace"
@@ -29,30 +29,30 @@ import (
 	"github.com/harness/gitness/app/api/controller/lfs"
 	"github.com/harness/gitness/app/api/controller/limiter"
 	controllerlogs "github.com/harness/gitness/app/api/controller/logs"
-	controllermigrate "github.com/harness/gitness/app/api/controller/migrate"
+	"github.com/harness/gitness/app/api/controller/migrate"
 	"github.com/harness/gitness/app/api/controller/pipeline"
 	"github.com/harness/gitness/app/api/controller/plugin"
 	"github.com/harness/gitness/app/api/controller/principal"
-	controllerpullreq "github.com/harness/gitness/app/api/controller/pullreq"
+	"github.com/harness/gitness/app/api/controller/pullreq"
 	"github.com/harness/gitness/app/api/controller/repo"
 	"github.com/harness/gitness/app/api/controller/reposettings"
-	controllersecret "github.com/harness/gitness/app/api/controller/secret"
+	"github.com/harness/gitness/app/api/controller/secret"
 	"github.com/harness/gitness/app/api/controller/service"
 	"github.com/harness/gitness/app/api/controller/serviceaccount"
-	controllerspace "github.com/harness/gitness/app/api/controller/space"
+	"github.com/harness/gitness/app/api/controller/space"
 	"github.com/harness/gitness/app/api/controller/system"
 	"github.com/harness/gitness/app/api/controller/template"
 	controllertrigger "github.com/harness/gitness/app/api/controller/trigger"
 	"github.com/harness/gitness/app/api/controller/upload"
 	"github.com/harness/gitness/app/api/controller/user"
-	controllerusergroup "github.com/harness/gitness/app/api/controller/usergroup"
+	"github.com/harness/gitness/app/api/controller/usergroup"
 	controllerwebhook "github.com/harness/gitness/app/api/controller/webhook"
 	"github.com/harness/gitness/app/api/openapi"
 	"github.com/harness/gitness/app/auth/authn"
 	"github.com/harness/gitness/app/auth/authz"
 	"github.com/harness/gitness/app/bootstrap"
 	connectorservice "github.com/harness/gitness/app/connector"
-	aitaskevents "github.com/harness/gitness/app/events/aitask"
+	aitaskevent "github.com/harness/gitness/app/events/aitask"
 	checkevents "github.com/harness/gitness/app/events/check"
 	gitevents "github.com/harness/gitness/app/events/git"
 	gitspaceevents "github.com/harness/gitness/app/events/gitspace"
@@ -84,8 +84,8 @@ import (
 	"github.com/harness/gitness/app/pipeline/runner"
 	"github.com/harness/gitness/app/pipeline/scheduler"
 	"github.com/harness/gitness/app/pipeline/triggerer"
-	approuter "github.com/harness/gitness/app/router"
-	appserver "github.com/harness/gitness/app/server"
+	"github.com/harness/gitness/app/router"
+	"github.com/harness/gitness/app/server"
 	"github.com/harness/gitness/app/services"
 	aitaskeventservice "github.com/harness/gitness/app/services/aitaskevent"
 	"github.com/harness/gitness/app/services/autolink"
@@ -129,7 +129,7 @@ import (
 	"github.com/harness/gitness/app/services/settings"
 	spaceSvc "github.com/harness/gitness/app/services/space"
 	"github.com/harness/gitness/app/services/tokengenerator"
-	triggerservice "github.com/harness/gitness/app/services/trigger"
+	"github.com/harness/gitness/app/services/trigger"
 	"github.com/harness/gitness/app/services/usage"
 	usergroupservice "github.com/harness/gitness/app/services/usergroup"
 	"github.com/harness/gitness/app/services/webhook"
@@ -193,21 +193,21 @@ func initSystem(
 		cache.WireSetSpace,
 		cache.WireSetRepo,
 		refcache.WireSet,
-		approuter.WireSet,
+		router.WireSet,
 		pullreqservice.WireSet,
 		services.WireSet,
 		services.ProvideGitspaceServices,
-		appserver.WireSet,
+		server.WireSet,
 		cliserver.ProvideNoOpMetricServer,
 		url.WireSet,
 		spaceSvc.ProvideNoopResourceMover,
 		spaceSvc.WireSet,
-		controllerspace.WireSet,
+		space.WireSet,
 		limiter.WireSet,
 		publicaccess.WireSet,
 		repo.WireSet,
 		reposettings.WireSet,
-		controllerpullreq.WireSet,
+		pullreq.WireSet,
 		merge.WireSet,
 		checkreq.WireSet,
 		automerge.WireSet,
@@ -253,7 +253,7 @@ func initSystem(
 		webhook.WireSet,
 		languageanalyzer.WireSet,
 		cliserver.ProvideTriggerConfig,
-		triggerservice.WireSet,
+		trigger.WireSet,
 		tokengenerator.WireSet,
 		githookCtrl.ExtenderWireSet,
 		githookCtrl.WireSet,
@@ -274,8 +274,8 @@ func initSystem(
 		logs.WireSet,
 		livelog.WireSet,
 		controllerlogs.WireSet,
-		controllersecret.WireSet,
-		controllerconnector.WireSet,
+		secret.WireSet,
+		connector.WireSet,
 		connectorservice.WireSet,
 		template.WireSet,
 		manager.WireSet,
@@ -306,7 +306,7 @@ func initSystem(
 		rules.ProvideValidator,
 		controllerkeywordsearch.WireSet,
 		settings.WireSet,
-		controllerusergroup.WireSet,
+		usergroup.WireSet,
 		openapi.WireSet,
 		repo.ProvideRepoCheck,
 		audit.WireSet,
@@ -314,7 +314,7 @@ func initSystem(
 		publickey.WireSet,
 		keyfetcher.ProvideService,
 		remoteauth.WireSet,
-		controllermigrate.WireSet,
+		migrate.WireSet,
 		scm.WireSet,
 		platformconnector.WireSet,
 		platformsecret.WireSet,
@@ -337,7 +337,7 @@ func initSystem(
 		gitspaceconfig.ProvideGitspaceOrchestratorConfig,
 		ide.WireSet,
 		gitspaceinfraevents.WireSet,
-		aitaskevents.WireSet,
+		aitaskevent.WireSet,
 		gitspaceservice.WireSet,
 		gitspacesettings.WireSet,
 		gitspaceoperationsevents.WireSet,
