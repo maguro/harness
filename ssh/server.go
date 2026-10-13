@@ -134,10 +134,12 @@ func (s *Server) sanitize() error {
 	return nil
 }
 
-func (s *Server) ListenAndServe() error {
+// Listen prepares the ssh service and binds its address.
+// Call Serve with the returned listener to accept connections.
+func (s *Server) Listen(ctx context.Context) (net.Listener, error) {
 	err := s.sanitize()
 	if err != nil {
-		return fmt.Errorf("failed to sanitize server defaults: %w", err)
+		return nil, fmt.Errorf("failed to sanitize server defaults: %w", err)
 	}
 	s.internal = &ssh.Server{
 		Addr: net.JoinHostPort(s.Host, strconv.Itoa(s.Port)),
@@ -165,11 +167,23 @@ func (s *Server) ListenAndServe() error {
 	}
 	err = s.setupHostKeys()
 	if err != nil {
-		return fmt.Errorf("failed to setup host keys: %w", err)
+		return nil, fmt.Errorf("failed to setup host keys: %w", err)
 	}
 
+	lc := net.ListenConfig{}
+	ln, err := lc.Listen(ctx, "tcp", s.internal.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen for ssh service: %w", err)
+	}
+
+	return ln, nil
+}
+
+// Serve accepts ssh connections on ln until Shutdown.
+// It returns an error that wraps ssh.ErrServerClosed after Shutdown.
+func (s *Server) Serve(ln net.Listener) error {
 	log.Debug().Msgf("starting ssh service....: %v", s.internal.Addr)
-	err = s.internal.ListenAndServe()
+	err := s.internal.Serve(ln)
 	if err != nil {
 		return fmt.Errorf("ssh service not running: %w", err)
 	}

@@ -15,25 +15,31 @@
 package server
 
 import (
-	"github.com/harness/gitness/app/bootstrap"
-	"github.com/harness/gitness/app/pipeline/resolver"
-	"github.com/harness/gitness/app/server"
-	"github.com/harness/gitness/app/services"
 	"github.com/harness/gitness/http"
-	"github.com/harness/gitness/ssh"
 
-	"github.com/drone/runner-go/poller"
+	"github.com/google/wire"
 )
 
-// System stores high level System sub-routines.
+// WireSet provides the system and the components of its lifecycle.
+var WireSet = wire.NewSet(
+	NewSystem,
+	ProvideBootstrapper,
+	ProvideInstrumentation,
+	ProvideHTTPServer,
+	ProvideMetricServer,
+	ProvideSSHServer,
+	ProvideJobRunner,
+	ProvideCIRunner,
+)
+
+// System is the root of the dependency graph.
+// It holds the components that the system lifecycle starts and stops.
 type System struct {
-	bootstrap       bootstrap.Bootstrap
-	server          *server.Server
-	sshServer       *ssh.Server
-	resolverManager *resolver.Manager
-	poller          *poller.Poller
-	services        services.Services
-	metricServer    http.ListenAndServeServer
+	httpServer   *HTTPServer
+	metricServer *MetricServer
+	sshServer    *SSHServer
+	jobRunner    *JobRunner
+	ciRunner     *CIRunner
 }
 
 func ProvideNoOpMetricServer() http.ListenAndServeServer {
@@ -41,21 +47,17 @@ func ProvideNoOpMetricServer() http.ListenAndServeServer {
 }
 
 func NewSystem(
-	bootstrap bootstrap.Bootstrap,
-	server *server.Server,
-	sshServer *ssh.Server,
-	poller *poller.Poller,
-	resolverManager *resolver.Manager,
-	services services.Services,
-	metricServer http.ListenAndServeServer,
+	httpServer *HTTPServer,
+	metricServer *MetricServer,
+	sshServer *SSHServer,
+	jobRunner *JobRunner,
+	ciRunner *CIRunner,
 ) *System {
 	return &System{
-		bootstrap:       bootstrap,
-		server:          server,
-		sshServer:       sshServer,
-		poller:          poller,
-		resolverManager: resolverManager,
-		services:        services,
-		metricServer:    metricServer,
+		httpServer:   httpServer,
+		metricServer: metricServer,
+		sshServer:    sshServer,
+		jobRunner:    jobRunner,
+		ciRunner:     ciRunner,
 	}
 }

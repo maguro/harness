@@ -102,6 +102,8 @@ func migrator(ctx context.Context, db *sqlx.DB) error {
 }
 
 // ProvideDatabase provides a database connection.
+//
+//yama:closer
 func ProvideDatabase(ctx context.Context, config database.Config) (*sqlx.DB, error) {
 	dbx, err := database.ConnectAndMigrate(
 		ctx,

@@ -159,12 +159,12 @@ generate-mocks:
 generate: wire
 	@echo "Generated Code"
 
-wire: cmd/gitness/wire_gen.go
+wire: cmd/gitness/lifecycle_gen.go
 
-force-wire: ## Force wire code generation
+force-wire: ## Force wire and lifecycle code generation
 	@sh ./scripts/wire/gitness.sh
 
-cmd/gitness/wire_gen.go: cmd/gitness/wire.go
+cmd/gitness/lifecycle_gen.go: cmd/gitness/lifecycle.go
 	@sh ./scripts/wire/gitness.sh
 
 ###############################################################################

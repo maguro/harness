@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build wireinject
-// +build wireinject
+//go:build yamainject
 
 package main
 
@@ -21,7 +20,7 @@ import (
 	"context"
 
 	checkcontroller "github.com/harness/gitness/app/api/controller/check"
-	"github.com/harness/gitness/app/api/controller/connector"
+	controllerconnector "github.com/harness/gitness/app/api/controller/connector"
 	"github.com/harness/gitness/app/api/controller/execution"
 	githookCtrl "github.com/harness/gitness/app/api/controller/githook"
 	gitspaceCtrl "github.com/harness/gitness/app/api/controller/gitspace"
@@ -30,30 +29,30 @@ import (
 	"github.com/harness/gitness/app/api/controller/lfs"
 	"github.com/harness/gitness/app/api/controller/limiter"
 	controllerlogs "github.com/harness/gitness/app/api/controller/logs"
-	"github.com/harness/gitness/app/api/controller/migrate"
+	controllermigrate "github.com/harness/gitness/app/api/controller/migrate"
 	"github.com/harness/gitness/app/api/controller/pipeline"
 	"github.com/harness/gitness/app/api/controller/plugin"
 	"github.com/harness/gitness/app/api/controller/principal"
-	"github.com/harness/gitness/app/api/controller/pullreq"
+	controllerpullreq "github.com/harness/gitness/app/api/controller/pullreq"
 	"github.com/harness/gitness/app/api/controller/repo"
 	"github.com/harness/gitness/app/api/controller/reposettings"
-	"github.com/harness/gitness/app/api/controller/secret"
+	controllersecret "github.com/harness/gitness/app/api/controller/secret"
 	"github.com/harness/gitness/app/api/controller/service"
 	"github.com/harness/gitness/app/api/controller/serviceaccount"
-	"github.com/harness/gitness/app/api/controller/space"
+	controllerspace "github.com/harness/gitness/app/api/controller/space"
 	"github.com/harness/gitness/app/api/controller/system"
 	"github.com/harness/gitness/app/api/controller/template"
 	controllertrigger "github.com/harness/gitness/app/api/controller/trigger"
 	"github.com/harness/gitness/app/api/controller/upload"
 	"github.com/harness/gitness/app/api/controller/user"
-	"github.com/harness/gitness/app/api/controller/usergroup"
+	controllerusergroup "github.com/harness/gitness/app/api/controller/usergroup"
 	controllerwebhook "github.com/harness/gitness/app/api/controller/webhook"
 	"github.com/harness/gitness/app/api/openapi"
 	"github.com/harness/gitness/app/auth/authn"
 	"github.com/harness/gitness/app/auth/authz"
 	"github.com/harness/gitness/app/bootstrap"
 	connectorservice "github.com/harness/gitness/app/connector"
-	aitaskevent "github.com/harness/gitness/app/events/aitask"
+	aitaskevents "github.com/harness/gitness/app/events/aitask"
 	checkevents "github.com/harness/gitness/app/events/check"
 	gitevents "github.com/harness/gitness/app/events/git"
 	gitspaceevents "github.com/harness/gitness/app/events/gitspace"
@@ -85,8 +84,8 @@ import (
 	"github.com/harness/gitness/app/pipeline/runner"
 	"github.com/harness/gitness/app/pipeline/scheduler"
 	"github.com/harness/gitness/app/pipeline/triggerer"
-	"github.com/harness/gitness/app/router"
-	"github.com/harness/gitness/app/server"
+	approuter "github.com/harness/gitness/app/router"
+	appserver "github.com/harness/gitness/app/server"
 	"github.com/harness/gitness/app/services"
 	aitaskeventservice "github.com/harness/gitness/app/services/aitaskevent"
 	"github.com/harness/gitness/app/services/autolink"
@@ -130,7 +129,7 @@ import (
 	"github.com/harness/gitness/app/services/settings"
 	spaceSvc "github.com/harness/gitness/app/services/space"
 	"github.com/harness/gitness/app/services/tokengenerator"
-	"github.com/harness/gitness/app/services/trigger"
+	triggerservice "github.com/harness/gitness/app/services/trigger"
 	"github.com/harness/gitness/app/services/usage"
 	usergroupservice "github.com/harness/gitness/app/services/usergroup"
 	"github.com/harness/gitness/app/services/webhook"
@@ -170,11 +169,18 @@ import (
 	"github.com/harness/gitness/types/check"
 
 	"github.com/google/wire"
+	"l7e.io/yama"
 )
 
-func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, error) {
-	wire.Build(
-		cliserver.NewSystem,
+func initSystem(
+	ctx context.Context,
+	config *types.Config,
+	enableCI cliserver.CIEnabled,
+	fail cliserver.FailFunc,
+	opts ...yama.Option,
+) (*cliserver.System, yama.Lifecycle, error) {
+	panic(wire.Build(
+		cliserver.WireSet,
 		cliserver.ProvideRedis,
 		bootstrap.WireSet,
 		cliserver.ProvideDatabaseConfig,
@@ -187,21 +193,21 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		cache.WireSetSpace,
 		cache.WireSetRepo,
 		refcache.WireSet,
-		router.WireSet,
+		approuter.WireSet,
 		pullreqservice.WireSet,
 		services.WireSet,
 		services.ProvideGitspaceServices,
-		server.WireSet,
+		appserver.WireSet,
 		cliserver.ProvideNoOpMetricServer,
 		url.WireSet,
 		spaceSvc.ProvideNoopResourceMover,
 		spaceSvc.WireSet,
-		space.WireSet,
+		controllerspace.WireSet,
 		limiter.WireSet,
 		publicaccess.WireSet,
 		repo.WireSet,
 		reposettings.WireSet,
-		pullreq.WireSet,
+		controllerpullreq.WireSet,
 		merge.WireSet,
 		checkreq.WireSet,
 		automerge.WireSet,
@@ -247,7 +253,7 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		webhook.WireSet,
 		languageanalyzer.WireSet,
 		cliserver.ProvideTriggerConfig,
-		trigger.WireSet,
+		triggerservice.WireSet,
 		tokengenerator.WireSet,
 		githookCtrl.ExtenderWireSet,
 		githookCtrl.WireSet,
@@ -268,8 +274,8 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		logs.WireSet,
 		livelog.WireSet,
 		controllerlogs.WireSet,
-		secret.WireSet,
-		connector.WireSet,
+		controllersecret.WireSet,
+		controllerconnector.WireSet,
 		connectorservice.WireSet,
 		template.WireSet,
 		manager.WireSet,
@@ -300,7 +306,7 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		rules.ProvideValidator,
 		controllerkeywordsearch.WireSet,
 		settings.WireSet,
-		usergroup.WireSet,
+		controllerusergroup.WireSet,
 		openapi.WireSet,
 		repo.ProvideRepoCheck,
 		audit.WireSet,
@@ -308,7 +314,7 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		publickey.WireSet,
 		keyfetcher.ProvideService,
 		remoteauth.WireSet,
-		migrate.WireSet,
+		controllermigrate.WireSet,
 		scm.WireSet,
 		platformconnector.WireSet,
 		platformsecret.WireSet,
@@ -331,7 +337,7 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		gitspaceconfig.ProvideGitspaceOrchestratorConfig,
 		ide.WireSet,
 		gitspaceinfraevents.WireSet,
-		aitaskevent.WireSet,
+		aitaskevents.WireSet,
 		gitspaceservice.WireSet,
 		gitspacesettings.WireSet,
 		gitspaceoperationsevents.WireSet,
@@ -363,6 +369,5 @@ func initSystem(ctx context.Context, config *types.Config) (*cliserver.System, e
 		checkevents.WireSet,
 		replicationevents.ProvideNoOpReplicationReporter,
 		registryhandlers.WireSet,
-	)
-	return &cliserver.System{}, nil
+	))
 }

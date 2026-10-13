@@ -16,13 +16,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/harness/gitness/app/pipeline/logger"
 	"github.com/harness/gitness/profiler"
 	"github.com/harness/gitness/types"
 	"github.com/harness/gitness/version"
@@ -31,21 +31,26 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"l7e.io/yama"
 )
 
 type command struct {
 	envfile     string
 	enableCI    bool
-	initializer func(context.Context, *types.Config) (*System, error)
+	initializer Initializer
 }
 
-func (c *command) run(*kingpin.ParseContext) error {
-	// Create context that listens for the interrupt signal from the OS.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+// Initializer builds the system and the lifecycle that starts and stops it.
+type Initializer func(
+	ctx context.Context,
+	config *types.Config,
+	enableCI CIEnabled,
+	fail FailFunc,
+	opts ...yama.Option,
+) (*System, yama.Lifecycle, error)
 
+func (c *command) run(*kingpin.ParseContext) error {
 	// load environment variables from file.
 	// no error handling needed when file is not present
 	_ = godotenv.Load(c.envfile)
@@ -65,80 +70,35 @@ func (c *command) run(*kingpin.ParseContext) error {
 
 	// add logger to context
 	log := log.Logger.With().Logger()
-	ctx = log.WithContext(ctx)
+	ctx := log.WithContext(context.Background())
+
+	// ctx is canceled with the cause if a component fails while the system runs.
+	ctx, fail := context.WithCancelCause(ctx)
+	defer fail(nil)
+
+	// appCtx is the context of the routines that the providers start.
+	// The system cancels it first when it stops.
+	appCtx, cancelApp := context.WithCancel(ctx)
+	defer cancelApp()
+
+	// Create context that listens for the interrupt signal from the OS.
+	waitCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// initialize system
-	system, err := c.initializer(ctx, config)
+	_, lifecycle, err := c.initializer(appCtx, config, CIEnabled(c.enableCI), FailFunc(fail),
+		yama.WithInterceptors(lifecycleLogger{fail: FailFunc(fail)}),
+		yama.WithEndComponents(backgroundRoutines{cancel: cancelApp}),
+	)
 	if err != nil {
 		return fmt.Errorf("encountered an error while wiring the system: %w", err)
 	}
 
-	// bootstrap the system
-	err = system.bootstrap(ctx)
+	// start the system in dependency order
+	err = lifecycle.Start(ctx)
 	if err != nil {
-		return fmt.Errorf("encountered an error while bootstrapping the system: %w", err)
-	}
-
-	// gCtx is canceled if any of the following occurs:
-	// - any go routine launched with g encounters an error
-	// - ctx is canceled
-	g, gCtx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		// initialize metric collector
-		if system.services.MetricCollector != nil {
-			if err := system.services.MetricCollector.Register(gCtx); err != nil {
-				log.Error().Err(err).Msg("failed to register metric collector")
-				return err
-			}
-		}
-
-		if system.services.RepoSizeCalculator != nil {
-			if err := system.services.RepoSizeCalculator.Register(gCtx); err != nil {
-				log.Error().Err(err).Msg("failed to register repo size calculator")
-				return err
-			}
-		}
-
-		if err := system.services.Cleanup.Register(gCtx); err != nil {
-			log.Error().Err(err).Msg("failed to register cleanup service")
-			return err
-		}
-
-		return system.services.JobScheduler.Run(gCtx)
-	})
-
-	// start server
-	gHTTP, shutdownHTTP := system.server.ListenAndServe()
-	g.Go(gHTTP.Wait)
-
-	gMetric, shutdownMetricServerFn := system.metricServer.ListenAndServe()
-	g.Go(gMetric.Wait)
-
-	if c.enableCI {
-		// start populating plugins
-		g.Go(func() error {
-			err := system.resolverManager.Populate(ctx)
-			if err != nil {
-				log.Error().Err(err).Msg("could not populate plugins")
-			}
-			return nil
-		})
-		// start poller for CI build executions.
-		g.Go(func() error {
-			system.poller.Poll(
-				logger.WithWrappedZerolog(ctx),
-				config.CI.ParallelWorkers,
-			)
-			return nil
-		})
-	}
-
-	if config.SSH.Enable {
-		g.Go(func() error {
-			log.Err(system.sshServer.ListenAndServe()).Send()
-			return nil
-		})
+		// the cause names the component that failed first.
+		return fmt.Errorf("encountered an error while starting the system: %w", errors.Join(err, context.Cause(ctx)))
 	}
 
 	log.Info().
@@ -149,43 +109,17 @@ func (c *command) run(*kingpin.ParseContext) error {
 		Stringer("version", version.Version).
 		Msg("server started")
 
-	// wait until the error group context is done
-	<-gCtx.Done()
+	// wait until a signal arrives or a component fails
+	<-waitCtx.Done()
 
 	// restore default behavior on the interrupt signal and notify user of shutdown.
 	stop()
 	log.Info().Msg("shutting down gracefully (press Ctrl+C again to force)")
 
-	// shutdown servers gracefully
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.GracefulShutdownTime)
-	defer cancel()
+	// stop the system in reverse dependency order
+	lifecycle.Stop(ctx)
 
-	if sErr := shutdownHTTP(shutdownCtx); sErr != nil {
-		log.Err(sErr).Msg("failed to shutdown http server gracefully")
-	}
-
-	if config.SSH.Enable {
-		if err := system.sshServer.Shutdown(shutdownCtx); err != nil {
-			log.Err(err).Msg("failed to shutdown ssh server gracefully")
-		}
-	}
-
-	if sErr := shutdownMetricServerFn(shutdownCtx); sErr != nil {
-		log.Err(sErr).Msg("failed to shutdown metric server gracefully")
-	}
-
-	// shutdown instrumentation
-	err = system.services.Instrumentation.Close(shutdownCtx)
-	if err != nil {
-		log.Err(err).Msg("failed to close instrumentation gracefully")
-	}
-	// shutdown job scheduler
-	system.services.JobScheduler.WaitJobsDone(shutdownCtx)
-
-	log.Info().Msg("wait for subroutines to complete")
-	err = g.Wait()
-
-	return err
+	return context.Cause(ctx)
 }
 
 // SetupLogger configures the global logger from the loaded configuration.
@@ -228,7 +162,7 @@ func SetupProfiler(config *types.Config) {
 }
 
 // Register the server command.
-func Register(app *kingpin.Application, initializer func(context.Context, *types.Config) (*System, error)) {
+func Register(app *kingpin.Application, initializer Initializer) {
 	c := new(command)
 	c.initializer = initializer
 

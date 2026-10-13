@@ -25,6 +25,8 @@ import (
 
 // ProvideRedis provides a redis client based on the configuration.
 // TODO: add support for TLS.
+//
+//yama:closer
 func ProvideRedis(config *types.Config) (redis.UniversalClient, error) {
 	if config.Redis.SentinelMode {
 		addrs := strings.Split(config.Redis.SentinelEndpoint, ",")
